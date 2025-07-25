@@ -30,7 +30,9 @@ Then you can easily move the converted files into your rPak assets folder to con
 Happy modding!
 
 Thanks to Microsoft and Chuck Walbourn for the texconv.exe program which makes this all work!
-You can get texconv at https://github.com/microsoft/DirectXTex/. Please see the DirectXTex license at
+You can get texconv at https://github.com/microsoft/DirectXTex/. 
+
+Please see the DirectXTex license at
 https://github.com/microsoft/DirectXTex?tab=MIT-1-ov-file#readme.
 
 Thanks to Flaticon for the program icon. Find it at https://www.flaticon.com/free-icons/zoology
