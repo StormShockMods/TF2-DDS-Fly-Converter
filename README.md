@@ -2,7 +2,7 @@
 
 
 TF2 DDS Fly Converter
-- Made by StormShockMods -
+Made by StormShockMods
 
 Hello everyone, welcome to the readme for the Fly Converter. Since most model swap mods
 require DDS (Direct Draw Surface) Files for making rpaks, and the conversions are standardized for each image type, I 
