@@ -3,7 +3,7 @@ import os
 import subprocess
 import tkinter as tk
 from tkinter import filedialog, BooleanVar
-from PIL import Image  # pip install pillow
+from PIL import Image  # pip install pillow or pillow-dds
 
 if getattr(sys, 'frozen', False):
     base_path = sys._MEIPASS
@@ -25,8 +25,6 @@ TEXTURE_TYPES = {
 selected_files = {}
 DND_AVAILABLE = False
 DND_FILES = None
-
-# Store sRGB checkbox vars per suffix that uses BC1
 srgb_vars = {}
 
 def has_alpha_transparency(img_path):
@@ -62,7 +60,7 @@ def update_go_button_visibility(go_button):
         go_button.pack_forget()
 
 def select_file(suffix, label, go_button):
-    file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.png;*.jpg;*.jpeg")])
+    file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.png;*.jpg;*.jpeg;*.dds")])
     if file_path:
         selected_files[suffix] = file_path
         label.config(text=os.path.basename(file_path))
@@ -70,34 +68,57 @@ def select_file(suffix, label, go_button):
 
 def convert_images():
     for suffix, path in selected_files.items():
-        if path:
-            input_folder = os.path.dirname(path)
-            output_folder = os.path.join(input_folder, "output")
-            os.makedirs(output_folder, exist_ok=True)
+        if not path:
+            continue
 
-            format_code = TEXTURE_TYPES[suffix]
-            extra_flags = []
+        ext = os.path.splitext(path)[1].lower()
+        input_folder = os.path.dirname(path)
+        output_folder = os.path.join(input_folder, "output")
+        os.makedirs(output_folder, exist_ok=True)
 
-            # If BC1 format, handle alpha for _col and add sRGB flag based on checkbox
-            if format_code == "BC1_UNORM_SRGB":
-                if suffix == "_col":
-                    # For _col, check alpha and use BC3 if alpha present
-                    if has_alpha_transparency(path):
-                        format_code = "BC3_UNORM_SRGB"
-                # Use the checkbox to decide sRGB flag
-                if srgb_vars.get(suffix, None) and srgb_vars[suffix].get():
-                    extra_flags.append("-srgb")
-                else:
-                    extra_flags.append("-nosrgb")
+        if ext == ".dds":
+            # Use texconv to convert DDS to PNG
+            try:
+                args = [
+                    TEXCONV_PATH,
+                    "-ft", "PNG",  # output format type
+                    "-o", output_folder,
+                    path
+                ]
+                subprocess.run(args, check=True)
+                print(f"Converted DDS to PNG: {os.path.basename(path)}")
+            except subprocess.CalledProcessError as e:
+                print(f"Failed to convert DDS to PNG: {e}")
+            continue  # skip DDS→DDS
 
-            run_texconv(path, output_folder, format_code, extra_flags)
+        # Handle PNG/JPG inputs for DDS export
+        format_code = TEXTURE_TYPES[suffix]
+        extra_flags = []
+
+        if format_code == "BC1_UNORM_SRGB":
+            if suffix == "_col" and has_alpha_transparency(path):
+                format_code = "BC3_UNORM_SRGB"
+            if srgb_vars.get(suffix, None) and srgb_vars[suffix].get():
+                extra_flags.append("-srgb")
+            else:
+                extra_flags.append("-nosrgb")
+
+        run_texconv(path, output_folder, format_code, extra_flags)
 
     print("All selected images converted.")
 
+
+
 def on_drop(event, suffix, label, go_button):
     raw = event.data.strip("{}")
-    if not os.path.isfile(raw) or not raw.lower().endswith((".png", ".jpg", ".jpeg")):
+    if not os.path.isfile(raw):
         return
+
+    ext = os.path.splitext(raw)[1].lower()
+    if ext not in (".png", ".jpg", ".jpeg", ".dds"):
+        print(f"Unsupported file type dropped: {ext}")
+        return
+
     selected_files[suffix] = raw
     label.config(text=os.path.basename(raw))
     update_go_button_visibility(go_button)
@@ -109,7 +130,7 @@ def enable_drag_and_drop(widget, suffix, label, go_button):
 
 def create_ui():
     global DND_AVAILABLE, DND_FILES, srgb_vars
-    
+
     icon_path = os.path.join(base_path, "fly.ico")
 
     try:
@@ -132,32 +153,27 @@ def create_ui():
     root.title("TF2 DDS Converter")
     root.configure(bg="#2e2e2e")
 
-        # Set window icon (uses the full .ico file with multiple sizes)
     if os.path.exists(icon_path):
         root.iconbitmap(icon_path)
 
-    # Display the 48x48 icon image above the main title
     try:
-        from PIL import Image, ImageTk
+        from PIL import ImageTk
         icon_img = Image.open(icon_path)
-        # Resize or extract 48x48 for display
         icon_img_48 = icon_img.copy()
         icon_img_48.thumbnail((48, 48), Image.LANCZOS)
         icon_img_tk = ImageTk.PhotoImage(icon_img_48)
         icon_label = tk.Label(root, image=icon_img_tk, bg="#2e2e2e")
-        icon_label.image = icon_img_tk  # keep a reference
+        icon_label.image = icon_img_tk
         icon_label.pack(pady=(25, 10))
     except Exception as e:
         print(f"Failed to load icon image: {e}")
 
-    # Main title label
     tk.Label(root, text="TF2 DDS Converter", font=("Helvetica", 20, "bold"),
              bg="#2e2e2e", fg="white").pack(pady=(0, 10))
 
     go_button = tk.Button(root, text="Go", command=convert_images,
                           bg="#4caf50", fg="white", font=("Helvetica", 14, "bold"))
 
-    # Subtitle label
     tk.Label(root, text="Made by StormShockMods", font=("Helvetica", 12, "italic", "bold"),
              bg="#2e2e2e", fg="white").pack(pady=(0, 20))
 
@@ -180,9 +196,8 @@ def create_ui():
 
         enable_drag_and_drop(slot, suffix, slot, go_button)
 
-        # Add sRGB checkbox only for BC1 formats (_col, _spc, _ilm, _ao, _cav)
         if TEXTURE_TYPES[suffix] == "BC1_UNORM_SRGB":
-            var = BooleanVar(value=True)  # default checked
+            var = BooleanVar(value=True)
             srgb_vars[suffix] = var
             cb = tk.Checkbutton(frame, text="Force sRGB", variable=var,
                                 bg="#2e2e2e", fg="white", activebackground="#2e2e2e",
@@ -192,7 +207,6 @@ def create_ui():
 
     update_go_button_visibility(go_button)
     root.mainloop()
-
 
 if __name__ == "__main__":
     create_ui()
